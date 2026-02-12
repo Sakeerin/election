@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Enums
+// ============================================
+
+enum ElectionType {
+  GENERAL
+  BY_ELECTION
+}
+
+enum ElectionStatus {
+  DRAFT
+  ACTIVE
+  COUNTING
+  COMPLETED
+  ARCHIVED
+}
+
+enum ConstituencyStatus {
+  PENDING
+  COUNTING
+  COMPLETED
+}
+
+enum ReferendumStatus {
+  DRAFT
+  ACTIVE
+  COUNTING
+  COMPLETED
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+// ============================================
+// Models
+// ============================================
+
+model Election {
+  id                  Int               @id @default(autoincrement())
+  name                String
+  electionDate        DateTime
+  type                ElectionType      @default(GENERAL)
+  status              ElectionStatus    @default(DRAFT)
+  hasReferendum       Boolean           @default(false)
+  totalEligibleVoters Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  constituencies      Constituency[]
+  partyListAllocations PartyListAllocation[]
+  referendums         Referendum[]
+  sections            ElectionSection[]
+
+  @@map("elections")
+}
+
+model ElectionSection {
+  id           Int      @id @default(autoincrement())
+  electionId   Int
+  sectionKey   String
+  titleTh      String
+  titleEn      String   @default("")
+  sectionType  String   @default("default")
+  isEnabled    Boolean  @default(true)
+  displayOrder Int      @default(0)
+  config       Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  election     Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@unique([electionId, sectionKey])
+  @@map("election_sections")
+}
+
+model Region {
+  id     Int    @id @default(autoincrement())
+  nameTh String
+  nameEn String @default("")
+
+  provinces Province[]
+
+  @@map("regions")
+}
+
+model Province {
+  id       Int    @id @default(autoincrement())
+  regionId Int
+  nameTh   String
+  nameEn   String @default("")
+  code     String @unique
+
+  region          Region             @relation(fields: [regionId], references: [id])
+  constituencies  Constituency[]
+  referendumResults ReferendumResult[]
+
+  @@map("provinces")
+}
+
+model Party {
+  id              Int     @id @default(autoincrement())
+  nameTh          String
+  nameEn          String  @default("")
+  abbreviation    String  @default("")
+  color           String  @default("#333333")
+  logoUrl         String?
+  leaderName      String?
+  leaderImageUrl  String?
+  partyNumber     Int     @default(0)
+
+  candidates          Candidate[]
+  partyListCandidates PartyListCandidate[]
+  partyListAllocations PartyListAllocation[]
+  constituencyResults ConstituencyResult[]
+
+  @@map("parties")
+}
+
+model Constituency {
+  id                 Int                @id @default(autoincrement())
+  electionId         Int
+  provinceId         Int
+  constituencyNumber Int
+  eligibleVoters     Int                @default(0)
+  totalVoters        Int                @default(0)
+  goodBallots        Int                @default(0)
+  badBallots         Int                @default(0)
+  noVoteBallots      Int                @default(0)
+  countingProgress   Float              @default(0)
+  status             ConstituencyStatus @default(PENDING)
+
+  election Election   @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  province Province   @relation(fields: [provinceId], references: [id])
+
+  candidates Candidate[]
+  results    ConstituencyResult[]
+
+  @@unique([electionId, provinceId, constituencyNumber])
+  @@map("constituencies")
+}
+
+model Candidate {
+  id              Int     @id @default(autoincrement())
+  partyId         Int
+  constituencyId  Int
+  nameTh          String
+  nameEn          String  @default("")
+  imageUrl        String?
+  candidateNumber Int     @default(0)
+
+  party        Party        @relation(fields: [partyId], references: [id])
+  constituency Constituency @relation(fields: [constituencyId], references: [id], onDelete: Cascade)
+
+  results ConstituencyResult[]
+
+  @@map("candidates")
+}
+
+model ConstituencyResult {
+  id              Int      @id @default(autoincrement())
+  constituencyId  Int
+  candidateId     Int
+  partyId         Int
+  voteCount       Int      @default(0)
+  isLeading       Boolean  @default(false)
+  isWinner        Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+
+  constituency Constituency @relation(fields: [constituencyId], references: [id], onDelete: Cascade)
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  party        Party        @relation(fields: [partyId], references: [id])
+
+  @@unique([constituencyId, candidateId])
+  @@map("constituency_results")
+}
+
+model PartyListCandidate {
+  id       Int     @id @default(autoincrement())
+  partyId  Int
+  rank     Int
+  nameTh   String
+  nameEn   String  @default("")
+  imageUrl String?
+
+  party Party @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@unique([partyId, rank])
+  @@map("party_list_candidates")
+}
+
+model PartyListAllocation {
+  id                 Int @id @default(autoincrement())
+  electionId         Int
+  partyId            Int
+  totalPartyListVotes Int @default(0)
+  allocatedSeats     Int @default(0)
+  constituencySeats  Int @default(0)
+  totalSeats         Int @default(0)
+
+  election Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  party    Party    @relation(fields: [partyId], references: [id])
+
+  @@unique([electionId, partyId])
+  @@map("party_list_allocations")
+}
+
+model Referendum {
+  id                  Int              @id @default(autoincrement())
+  electionId          Int
+  questionTh          String
+  questionEn          String           @default("")
+  descriptionTh       String?
+  descriptionEn       String?
+  isEnabled           Boolean          @default(false)
+  displayOrder        Int              @default(0)
+  status              ReferendumStatus @default(DRAFT)
+  totalEligibleVoters Int              @default(0)
+  totalVoters         Int              @default(0)
+  approveCount        Int              @default(0)
+  disapproveCount     Int              @default(0)
+  abstainCount        Int              @default(0)
+  badBallots          Int              @default(0)
+  countingProgress    Float            @default(0)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  election Election           @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  results  ReferendumResult[]
+
+  @@map("referendums")
+}
+
+model ReferendumResult {
+  id              Int      @id @default(autoincrement())
+  referendumId    Int
+  provinceId      Int
+  approveCount    Int      @default(0)
+  disapproveCount Int      @default(0)
+  abstainCount    Int      @default(0)
+  totalVoters     Int      @default(0)
+  countingProgress Float   @default(0)
+  updatedAt       DateTime @updatedAt
+
+  referendum Referendum @relation(fields: [referendumId], references: [id], onDelete: Cascade)
+  province   Province   @relation(fields: [provinceId], references: [id])
+
+  @@unique([referendumId, provinceId])
+  @@map("referendum_results")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  displayName  String   @default("")
+  role         UserRole @default(VIEWER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  action    String
+  entity    String
+  entityId  Int?
+  oldData   Json?
+  newData   Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
