@@ -64,6 +64,7 @@ model Election {
   referendums         Referendum[]
   sections            ElectionSection[]
 
+  @@index([status])
   @@map("elections")
 }
 
@@ -149,6 +150,9 @@ model Constituency {
   results    ConstituencyResult[]
 
   @@unique([electionId, provinceId, constituencyNumber])
+  @@index([electionId])
+  @@index([provinceId])
+  @@index([status])
   @@map("constituencies")
 }
 
@@ -166,6 +170,8 @@ model Candidate {
 
   results ConstituencyResult[]
 
+  @@index([partyId])
+  @@index([constituencyId])
   @@map("candidates")
 }
 
@@ -184,6 +190,8 @@ model ConstituencyResult {
   party        Party        @relation(fields: [partyId], references: [id])
 
   @@unique([constituencyId, candidateId])
+  @@index([constituencyId])
+  @@index([partyId])
   @@map("constituency_results")
 }
 
@@ -214,6 +222,7 @@ model PartyListAllocation {
   party    Party    @relation(fields: [partyId], references: [id])
 
   @@unique([electionId, partyId])
+  @@index([electionId])
   @@map("party_list_allocations")
 }
 
@@ -258,6 +267,7 @@ model ReferendumResult {
   province   Province   @relation(fields: [provinceId], references: [id])
 
   @@unique([referendumId, provinceId])
+  @@index([referendumId])
   @@map("referendum_results")
 }
 
@@ -288,5 +298,8 @@ model AuditLog {
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
