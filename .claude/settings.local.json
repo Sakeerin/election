@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install lucide-react tailwind-merge)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run build)"
+    ]
+  }
+}
