@@ -9,6 +9,7 @@
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
         "incremental": true,
+        "strictPropertyInitialization": false,
         "paths": {
             "@/*": [
                 "src/*"

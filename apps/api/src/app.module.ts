@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ElectionModule } from './modules/election/election.module';
 import { PartyModule } from './modules/party/party.module';
 import { CandidateModule } from './modules/candidate/candidate.module';
 import { ConstituencyModule } from './modules/constituency/constituency.module';
@@ -33,6 +34,7 @@ import { ElectionGateway } from './gateways/election.gateway';
 
         // Feature modules
         AuthModule,
+        ElectionModule,
         PartyModule,
         CandidateModule,
         ConstituencyModule,
