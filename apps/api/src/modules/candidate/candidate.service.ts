@@ -20,7 +20,11 @@ export class CandidateService {
             where: { id },
             include: {
                 party: true,
-                constituency: { include: { province: true } },
+                constituency: {
+                    include: {
+                        province: { include: { region: true } },
+                    },
+                },
             },
         });
 
@@ -29,6 +33,36 @@ export class CandidateService {
         }
 
         return candidate;
+    }
+
+    async getCandidateDetail(id: number) {
+        const candidate = await this.findById(id);
+
+        // Get results for all candidates in this constituency
+        const results = await this.prisma.constituencyResult.findMany({
+            where: {
+                constituencyId: candidate.constituencyId,
+            },
+            include: {
+                candidate: true,
+                party: true,
+            },
+            orderBy: { voteCount: 'desc' },
+        });
+
+        return {
+            candidate,
+            constituency: candidate.constituency,
+            results: results.map((r) => ({
+                candidateId: r.candidateId,
+                candidateNameTh: r.candidate.nameTh,
+                partyNameTh: r.party.nameTh,
+                partyColor: r.party.color,
+                voteCount: r.voteCount,
+                isLeading: r.isLeading,
+                isWinner: r.isWinner,
+            })),
+        };
     }
 
     async create(dto: CreateCandidateDto) {

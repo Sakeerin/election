@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* ============================================
+   Theme — dark-first election dashboard
+   ============================================ */
+:root {
+    --background: #0f172a;
+    --foreground: #f1f5f9;
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --font-sans: var(--font-sarabun), var(--font-geist-sans), Arial, sans-serif;
+    --font-mono: var(--font-geist-mono);
+}
+
+body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================
+   Live Ticker scroll animation
+   ============================================ */
+@keyframes ticker {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+    animation: ticker linear infinite;
+    will-change: transform;
+}
+
+.animate-ticker:hover {
+    animation-play-state: paused;
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track { background: #0f172a; }
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover { background: #475569; }

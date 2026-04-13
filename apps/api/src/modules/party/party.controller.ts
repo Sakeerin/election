@@ -24,6 +24,12 @@ export class PartyController {
         return this.partyService.findById(id);
     }
 
+    @Get(':id/detail')
+    @ApiOperation({ summary: 'Get full party details with seats and wins' })
+    getPartyDetail(@Param('id', ParseIntPipe) id: number) {
+        return this.partyService.getPartyDetail(id);
+    }
+
     @Post()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles('SUPER_ADMIN', 'ADMIN')

@@ -13,10 +13,10 @@
 - [x] Phase 3: Real-time Infrastructure
 - [x] Phase 4: Frontend - Overview Page
 - [x] Phase 5: Frontend - Map & Constituency View
-- [ ] Phase 6: Frontend - Party & Candidate Details
-- [ ] Phase 7: Frontend - Government Formation Simulator
-- [ ] Phase 8: Admin CMS Backend
-- [ ] Phase 9: Performance & Scaling
+- [x] Phase 6: Frontend - Party & Candidate Details
+- [x] Phase 7: Frontend - Government Formation Simulator
+- [x] Phase 8: Admin CMS Backend
+- [/] Phase 9: Performance & Scaling
 
 ## Verification
 - [ ] Load testing

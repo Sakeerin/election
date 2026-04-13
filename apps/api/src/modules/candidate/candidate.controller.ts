@@ -25,6 +25,12 @@ export class CandidateController {
         return this.candidateService.findById(id);
     }
 
+    @Get(':id/detail')
+    @ApiOperation({ summary: 'Get candidate detail with constituency results' })
+    getCandidateDetail(@Param('id', ParseIntPipe) id: number) {
+        return this.candidateService.getCandidateDetail(id);
+    }
+
     @Post()
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles('SUPER_ADMIN', 'ADMIN', 'EDITOR')

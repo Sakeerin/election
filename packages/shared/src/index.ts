@@ -203,6 +203,31 @@ export interface IPartySummary {
     rank: number;
 }
 
+export interface IPartyDetail extends IPartySummary {
+    partyListCandidates: IPartyListCandidate[];
+    constituencyWins: {
+        constituencyId: number;
+        provinceNameTh: string;
+        constituencyNumber: number;
+        candidateNameTh: string;
+        voteCount: number;
+    }[];
+}
+
+export interface ICandidateDetail {
+    candidate: ICandidate & { party: IParty };
+    constituency: IConstituency & { province: IProvince & { region: IRegion } };
+    results: {
+        candidateId: number;
+        candidateNameTh: string;
+        partyNameTh: string;
+        partyColor: string;
+        voteCount: number;
+        isLeading: boolean;
+        isWinner: boolean;
+    }[];
+}
+
 // ============================================
 // WebSocket Event Types
 // ============================================
