@@ -4,6 +4,7 @@ import { VoteService } from './vote.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { ElectionGateway } from '../../gateways/election.gateway';
+import { SummaryService } from '../summary/summary.service';
 
 const mockConstituency = {
     id: 1,
@@ -42,6 +43,11 @@ const mockRedis = {
 const mockGateway = {
     broadcastVoteUpdated: jest.fn(),
     broadcastPartyUpdated: jest.fn(),
+    broadcastCountingProgress: jest.fn(),
+};
+
+const mockSummary = {
+    getCountingProgress: jest.fn(),
 };
 
 describe('VoteService', () => {
@@ -54,6 +60,7 @@ describe('VoteService', () => {
                 { provide: PrismaService, useValue: mockPrisma },
                 { provide: RedisService, useValue: mockRedis },
                 { provide: ElectionGateway, useValue: mockGateway },
+                { provide: SummaryService, useValue: mockSummary },
             ],
         }).compile();
 
@@ -102,6 +109,36 @@ describe('VoteService', () => {
             expect(result).toEqual(mockResults);
             expect(mockGateway.broadcastVoteUpdated).toHaveBeenCalledTimes(1);
             expect(mockRedis.invalidatePattern).toHaveBeenCalledWith('summary:*:1');
+        });
+
+        it('should broadcast fresh counting progress after invalidating the cache', async () => {
+            mockPrisma.constituency.findUnique.mockResolvedValue(mockConstituency);
+            mockPrisma.$transaction.mockImplementation((fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+                fn(mockPrisma),
+            );
+            mockPrisma.constituencyResult.updateMany.mockResolvedValue({ count: 0 });
+            mockPrisma.constituencyResult.upsert.mockResolvedValue({});
+            mockPrisma.constituencyResult.findFirst.mockResolvedValue(null);
+            mockPrisma.constituency.update.mockResolvedValue(mockConstituency);
+            mockPrisma.constituencyResult.findMany.mockResolvedValue([]);
+            mockRedis.invalidatePattern.mockResolvedValue(undefined);
+            mockSummary.getCountingProgress.mockResolvedValue({
+                totalConstituencies: 33,
+                totalCounted: 4,
+                percentage: 27.5,
+            });
+
+            await service.updateConstituencyVotes({ constituencyId: 1, votes: [], countingProgress: 100 });
+
+            expect(mockSummary.getCountingProgress).toHaveBeenCalledWith(1);
+            expect(mockGateway.broadcastCountingProgress).toHaveBeenCalledWith({
+                totalCounted: 4,
+                percentage: 27.5,
+            });
+            // Progress must be recomputed AFTER the stale cache entry is cleared
+            expect(mockRedis.invalidatePattern.mock.invocationCallOrder[0]).toBeLessThan(
+                mockSummary.getCountingProgress.mock.invocationCallOrder[0],
+            );
         });
     });
 

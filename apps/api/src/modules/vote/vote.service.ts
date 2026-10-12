@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { ElectionGateway } from '../../gateways/election.gateway';
+import { SummaryService } from '../summary/summary.service';
 import { UpdateConstituencyVotesDto, UpdatePartyListDto, BatchUpdateConstituencyVotesDto } from './dto/update-votes.dto';
 import { ConstituencyStatus } from '@prisma/client';
 
@@ -13,6 +14,7 @@ export class VoteService {
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
         private readonly gateway: ElectionGateway,
+        private readonly summary: SummaryService,
     ) { }
 
     async updateConstituencyVotes(dto: UpdateConstituencyVotesDto) {
@@ -119,6 +121,18 @@ export class VoteService {
 
         // Scoped cache invalidation — only clear summaries for this election
         await this.redis.invalidatePattern(`summary:*:${electionId}`);
+
+        // Election-wide progress is recomputed after the cache clear so clients never get stale numbers.
+        // Votes are already committed, so a failure here must not fail the request.
+        try {
+            const progress = await this.summary.getCountingProgress(electionId);
+            this.gateway.broadcastCountingProgress({
+                totalCounted: progress.totalCounted,
+                percentage: progress.percentage,
+            });
+        } catch (err) {
+            this.logger.warn(`Failed to broadcast counting progress for election #${electionId}: ${err}`);
+        }
 
         this.logger.log(`Updated votes for constituency #${dto.constituencyId} (election #${electionId})`);
         return results;

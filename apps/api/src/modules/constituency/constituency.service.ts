@@ -1,5 +1,8 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
+import { ElectionGateway } from '../../gateways/election.gateway';
+import { SummaryService } from '../summary/summary.service';
 import { CreateConstituencyDto } from './dto/create-constituency.dto';
 import { UpdateConstituencyDto } from './dto/update-constituency.dto';
 import { ConstituencyStatus } from '@prisma/client';
@@ -8,7 +11,12 @@ import { ConstituencyStatus } from '@prisma/client';
 export class ConstituencyService {
     private readonly logger = new Logger(ConstituencyService.name);
 
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly redis: RedisService,
+        private readonly gateway: ElectionGateway,
+        private readonly summary: SummaryService,
+    ) { }
 
     async findByElection(electionId: number, provinceId?: number) {
         return this.prisma.constituency.findMany({
@@ -97,6 +105,24 @@ export class ConstituencyService {
             },
             include: { province: true },
         });
+
+        // Scoped cache invalidation — only clear summaries for this election
+        await this.redis.invalidatePattern(`summary:*:${updated.electionId}`);
+
+        // Election-wide progress is recomputed after the cache clear so clients never get stale numbers.
+        // The update is already committed, so a failure here must not fail the request.
+        if (dto.countingProgress !== undefined || dto.status) {
+            try {
+                const progress = await this.summary.getCountingProgress(updated.electionId);
+                this.gateway.broadcastCountingProgress({
+                    totalCounted: progress.totalCounted,
+                    percentage: progress.percentage,
+                });
+            } catch (err) {
+                this.logger.warn(`Failed to broadcast counting progress for election #${updated.electionId}: ${err}`);
+            }
+        }
+
         this.logger.log(`Updated constituency #${id}`);
         return updated;
     }

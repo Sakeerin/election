@@ -8,6 +8,7 @@ import { ElectionModule } from './modules/election/election.module';
 import { PartyModule } from './modules/party/party.module';
 import { CandidateModule } from './modules/candidate/candidate.module';
 import { ConstituencyModule } from './modules/constituency/constituency.module';
+import { ProvinceModule } from './modules/province/province.module';
 import { VoteModule } from './modules/vote/vote.module';
 import { ReferendumModule } from './modules/referendum/referendum.module';
 import { SectionModule } from './modules/section/section.module';
@@ -39,6 +40,7 @@ import { ElectionGateway } from './gateways/election.gateway';
         PartyModule,
         CandidateModule,
         ConstituencyModule,
+        ProvinceModule,
         VoteModule,
         ReferendumModule,
         SectionModule,

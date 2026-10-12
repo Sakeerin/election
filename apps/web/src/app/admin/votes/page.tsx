@@ -2,13 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { IProvince, IConstituency } from '@election/shared';
+import { IProvince, IConstituency, ICandidate, IParty, IConstituencyResult } from '@election/shared';
 
 interface VoteResult {
     candidateId: number;
     voteCount: number;
     candidate: { nameTh: string; candidateNumber: number };
     party: { nameTh: string; color: string };
+}
+
+/** Shape returned by GET /constituencies/:id */
+interface ConstituencyWithCandidates extends IConstituency {
+    candidates: (ICandidate & { party: IParty })[];
+    results: IConstituencyResult[];
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
@@ -19,6 +25,7 @@ export default function AdminVotesPage() {
     const [constituencies, setConstituencies] = useState<IConstituency[]>([]);
     const [selectedConstituencyId, setSelectedConstituencyId] = useState<number | null>(null);
     const [results, setResults] = useState<VoteResult[]>([]);
+    const [countingProgress, setCountingProgress] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -27,7 +34,8 @@ export default function AdminVotesPage() {
     useEffect(() => {
         const fetchProvinces = async () => {
             try {
-                const response = await fetch(`${API_BASE}/api/provinces`, { credentials: 'include' });
+                // Only provinces that actually have constituencies in this election
+                const response = await fetch(`${API_BASE}/api/provinces?electionId=1`, { credentials: 'include' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data: IProvince[] = await response.json();
                 setProvinces(data);
@@ -70,19 +78,21 @@ export default function AdminVotesPage() {
             setFetchError(null);
             try {
                 const response = await fetch(
-                    `${API_BASE}/api/constituencies/${selectedConstituencyId}/results`,
+                    `${API_BASE}/api/constituencies/${selectedConstituencyId}`,
                     { credentials: 'include' },
                 );
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                // Map constituency results to the editable VoteResult shape
-                const mapped: VoteResult[] = (data.results ?? []).map((r: VoteResult) => ({
-                    candidateId: r.candidateId,
-                    voteCount: r.voteCount,
-                    candidate: r.candidate,
-                    party: r.party,
+                const data: ConstituencyWithCandidates = await response.json();
+                // List every candidate — result rows only exist after the first save
+                const voteByCandidate = new Map(data.results.map((r) => [r.candidateId, r.voteCount]));
+                const mapped: VoteResult[] = data.candidates.map((c) => ({
+                    candidateId: c.id,
+                    voteCount: voteByCandidate.get(c.id) ?? 0,
+                    candidate: { nameTh: c.nameTh, candidateNumber: c.candidateNumber },
+                    party: { nameTh: c.party.nameTh, color: c.party.color },
                 }));
                 setResults(mapped);
+                setCountingProgress(data.countingProgress);
             } catch (err) {
                 console.error('Error fetching results:', err);
                 setFetchError('ไม่สามารถโหลดผลคะแนนได้');
@@ -98,6 +108,11 @@ export default function AdminVotesPage() {
         setResults((prev) =>
             prev.map((r) => (r.candidateId === candidateId ? { ...r, voteCount: count } : r)),
         );
+    };
+
+    const handleProgressChange = (value: string) => {
+        const pct = Math.min(100, Math.max(0, parseFloat(value) || 0));
+        setCountingProgress(pct);
     };
 
     const handleSave = async () => {
@@ -116,6 +131,7 @@ export default function AdminVotesPage() {
                         candidateId: r.candidateId,
                         voteCount: r.voteCount,
                     })),
+                    countingProgress,
                 }),
             });
 
@@ -199,6 +215,24 @@ export default function AdminVotesPage() {
                             {saveMessage.text}
                         </div>
                     )}
+
+                    <div className="mb-6 flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
+                        <div className="flex-1">
+                            <p className="font-bold text-slate-200">ความคืบหน้าการนับคะแนน (%)</p>
+                            <p className="text-xs text-slate-500">ใส่ 100 เมื่อนับครบ ระบบจะประกาศผู้ชนะของเขตนี้</p>
+                        </div>
+                        <div className="w-full md:w-48">
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.1}
+                                value={countingProgress}
+                                onChange={(e) => handleProgressChange(e.target.value)}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-white text-right font-mono text-lg focus:border-blue-500 outline-none"
+                            />
+                        </div>
+                    </div>
 
                     {isLoading ? (
                         <div className="text-center py-12 text-slate-500">กำลังโหลดข้อมูล...</div>

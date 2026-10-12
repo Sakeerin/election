@@ -4,14 +4,18 @@ import { useEffect, useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { IReferendum } from '@election/shared';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 export default function AdminReferendumsPage() {
     const [referendums, setReferendums] = useState<IReferendum[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [toggleError, setToggleError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchReferendums = async () => {
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/referendums?electionId=1`);
+                const response = await fetch(`${API_BASE}/api/referendums?electionId=1`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 setReferendums(data);
             } catch (err) {
@@ -24,22 +28,27 @@ export default function AdminReferendumsPage() {
     }, []);
 
     const toggleReferendum = async (id: number, isEnabled: boolean) => {
+        setToggleError(null);
         try {
-            const token = localStorage.getItem('admin_token');
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/referendums/${id}/toggle`, {
-                method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+            const response = await fetch(`${API_BASE}/api/referendums/${id}/toggle`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                // Cookie (httpOnly access_token) is sent automatically
+                credentials: 'include',
                 body: JSON.stringify({ isEnabled: !isEnabled }),
             });
-            
-            setReferendums(prev => prev.map(r => 
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.message || `HTTP ${response.status}`);
+            }
+
+            // Only flip the UI once the server has accepted the change
+            setReferendums(prev => prev.map(r =>
                 r.id === id ? { ...r, isEnabled: !isEnabled } : r
             ));
         } catch (err) {
             console.error('Error toggling referendum:', err);
+            setToggleError('ไม่สามารถเปลี่ยนสถานะการแสดงผลได้ กรุณาตรวจสอบสิทธิ์และลองใหม่อีกครั้ง');
         }
     };
 
@@ -54,6 +63,12 @@ export default function AdminReferendumsPage() {
                     + สร้างคำถามใหม่
                 </button>
             </div>
+
+            {toggleError && (
+                <div className="mb-6 rounded-xl border border-red-500/50 bg-red-500/10 p-4 text-sm font-semibold text-red-400">
+                    {toggleError}
+                </div>
+            )}
 
             {isLoading ? (
                 <div className="flex justify-center py-20">

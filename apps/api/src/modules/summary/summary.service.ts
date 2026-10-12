@@ -3,7 +3,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { APP_CONSTANTS } from '../../common/constants/app.constants';
 
-interface CountingProgress {
+export interface CountingProgress {
     totalConstituencies: number;
     totalCounted: number;
     percentage: number;
@@ -161,11 +161,11 @@ export class SummaryService {
      * Return counting progress for an election.
      * Uses DB aggregation to avoid loading all constituency rows into memory.
      */
-    async getCountingProgress(electionId: number) {
+    async getCountingProgress(electionId: number): Promise<CountingProgress> {
         const cacheKey = `summary:progress:${electionId}`;
 
         try {
-            const cached = await this.redis.getJson<unknown>(cacheKey);
+            const cached = await this.redis.getJson<CountingProgress>(cacheKey);
             if (cached) return cached;
 
             const [aggregate, totalCompleted] = await Promise.all([
