@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateConstituencyDto } from './dto/create-constituency.dto';
 import { UpdateConstituencyDto } from './dto/update-constituency.dto';
@@ -6,6 +6,8 @@ import { ConstituencyStatus } from '@prisma/client';
 
 @Injectable()
 export class ConstituencyService {
+    private readonly logger = new Logger(ConstituencyService.name);
+
     constructor(private readonly prisma: PrismaService) { }
 
     async findByElection(electionId: number, provinceId?: number) {
@@ -67,7 +69,7 @@ export class ConstituencyService {
     }
 
     async create(dto: CreateConstituencyDto) {
-        return this.prisma.constituency.create({
+        const constituency = await this.prisma.constituency.create({
             data: {
                 electionId: dto.electionId,
                 provinceId: dto.provinceId,
@@ -76,11 +78,13 @@ export class ConstituencyService {
             },
             include: { province: true },
         });
+        this.logger.log(`Created constituency #${constituency.id} (election #${dto.electionId})`);
+        return constituency;
     }
 
     async update(id: number, dto: UpdateConstituencyDto) {
         await this.findById(id);
-        return this.prisma.constituency.update({
+        const updated = await this.prisma.constituency.update({
             where: { id },
             data: {
                 ...(dto.eligibleVoters !== undefined && { eligibleVoters: dto.eligibleVoters }),
@@ -93,5 +97,7 @@ export class ConstituencyService {
             },
             include: { province: true },
         });
+        this.logger.log(`Updated constituency #${id}`);
+        return updated;
     }
 }

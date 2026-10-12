@@ -4,32 +4,68 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
+interface AdminUser {
+    id: number;
+    username: string;
+    displayName: string;
+    role: string;
+}
+
 interface AdminLayoutProps {
     children: React.ReactNode;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<AdminUser | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     useEffect(() => {
-        const storedUser = localStorage.getItem('admin_user');
-        const token = localStorage.getItem('admin_token');
+        // Verify auth via the httpOnly cookie — never read the token from JS
+        const verifyAuth = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/profile`, {
+                    credentials: 'include',
+                });
+                if (!res.ok) {
+                    router.push('/admin');
+                    return;
+                }
+                const profile: AdminUser = await res.json();
+                // Update sessionStorage cache for display purposes only (not auth)
+                sessionStorage.setItem('admin_user', JSON.stringify(profile));
+                setUser(profile);
+            } catch {
+                router.push('/admin');
+            }
+        };
 
-        if (!storedUser || !token) {
-            router.push('/admin');
-            return;
+        // Fast path: use sessionStorage cache while verifying in background
+        const cached = sessionStorage.getItem('admin_user');
+        if (cached) {
+            try {
+                setUser(JSON.parse(cached) as AdminUser);
+            } catch {
+                // Ignore parse errors — verifyAuth will handle redirect
+            }
         }
 
-        setUser(JSON.parse(storedUser));
+        verifyAuth();
     }, [router]);
 
-    const handleLogout = () => {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
-        router.push('/admin');
+    const handleLogout = async () => {
+        try {
+            await fetch(`${API_BASE}/api/auth/logout`, {
+                method: 'POST',
+                credentials: 'include',
+            });
+        } finally {
+            sessionStorage.removeItem('admin_user');
+            router.push('/admin');
+        }
     };
 
     const menuItems = [
@@ -47,7 +83,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     return (
         <div className="flex min-h-screen bg-slate-950 text-slate-200">
             {/* Sidebar */}
-            <aside 
+            <aside
                 className={`fixed inset-y-0 left-0 z-50 w-64 transform border-r border-slate-800 bg-slate-900 transition-transform duration-300 lg:static lg:translate-x-0 ${
                     isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
                 }`}
@@ -66,8 +102,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                     key={item.href}
                                     href={item.href}
                                     className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-all ${
-                                        isActive 
-                                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' 
+                                        isActive
+                                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
                                             : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                                     }`}
                                 >
@@ -102,7 +138,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <main className="flex-1 overflow-auto p-4 md:p-8">
                 <div className="mb-8 flex items-center justify-between lg:hidden">
                     <h1 className="text-xl font-bold text-white">Election CMS</h1>
-                    <button 
+                    <button
                         onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                         className="rounded-lg bg-slate-800 p-2"
                     >

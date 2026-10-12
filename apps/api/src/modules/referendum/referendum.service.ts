@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { ElectionGateway } from '../../gateways/election.gateway';
@@ -8,7 +8,7 @@ import {
     UpdateReferendumResultDto,
     ToggleReferendumDto,
 } from './dto/referendum.dto';
-import { ReferendumStatus } from '@prisma/client';
+import { APP_CONSTANTS } from '../../common/constants/app.constants';
 
 @Injectable()
 export class ReferendumService {
@@ -46,7 +46,7 @@ export class ReferendumService {
     }
 
     async create(dto: CreateReferendumDto) {
-        return this.prisma.referendum.create({
+        const referendum = await this.prisma.referendum.create({
             data: {
                 electionId: dto.electionId,
                 questionTh: dto.questionTh,
@@ -58,17 +58,24 @@ export class ReferendumService {
                 totalEligibleVoters: dto.totalEligibleVoters ?? 0,
             },
         });
+        this.logger.log(`Created referendum #${referendum.id} for election #${dto.electionId}`);
+        return referendum;
     }
 
     async update(id: number, dto: UpdateReferendumDto) {
         await this.findById(id);
-        return this.prisma.referendum.update({
-            where: { id },
-            data: dto,
-        });
+        const updated = await this.prisma.referendum.update({ where: { id }, data: dto });
+        this.logger.log(`Updated referendum #${id}`);
+        return updated;
     }
 
+    /**
+     * Upsert a per-province result then re-aggregate totals using the database
+     * (avoids loading all province rows into JS memory).
+     */
     async updateResults(dto: UpdateReferendumResultDto) {
+        this.logger.debug(`Updating referendum #${dto.referendumId} results for province #${dto.provinceId}`);
+
         const result = await this.prisma.referendumResult.upsert({
             where: {
                 referendumId_provinceId: {
@@ -94,50 +101,63 @@ export class ReferendumService {
             },
         });
 
-        // Recalculate referendum totals
-        const allResults = await this.prisma.referendumResult.findMany({
-            where: { referendumId: dto.referendumId },
-        });
-
-        const totals = allResults.reduce(
-            (acc, r) => ({
-                approveCount: acc.approveCount + r.approveCount,
-                disapproveCount: acc.disapproveCount + r.disapproveCount,
-                abstainCount: acc.abstainCount + r.abstainCount,
-                totalVoters: acc.totalVoters + r.totalVoters,
-                countingProgress: acc.countingProgress + r.countingProgress,
+        // Aggregate totals with a single DB query instead of loading all records into JS
+        const [sums, avgProgress] = await Promise.all([
+            this.prisma.referendumResult.aggregate({
+                where: { referendumId: dto.referendumId },
+                _sum: {
+                    approveCount: true,
+                    disapproveCount: true,
+                    abstainCount: true,
+                    totalVoters: true,
+                },
             }),
-            { approveCount: 0, disapproveCount: 0, abstainCount: 0, totalVoters: 0, countingProgress: 0 },
-        );
+            this.prisma.referendumResult.aggregate({
+                where: { referendumId: dto.referendumId },
+                _avg: { countingProgress: true },
+            }),
+        ]);
 
-        const avgProgress = allResults.length > 0 ? totals.countingProgress / allResults.length : 0;
+        const totals = {
+            approveCount: sums._sum.approveCount ?? 0,
+            disapproveCount: sums._sum.disapproveCount ?? 0,
+            abstainCount: sums._sum.abstainCount ?? 0,
+            totalVoters: sums._sum.totalVoters ?? 0,
+            countingProgress: avgProgress._avg.countingProgress ?? 0,
+        };
 
         await this.prisma.referendum.update({
             where: { id: dto.referendumId },
-            data: {
-                approveCount: totals.approveCount,
-                disapproveCount: totals.disapproveCount,
-                abstainCount: totals.abstainCount,
-                totalVoters: totals.totalVoters,
-                countingProgress: avgProgress,
-            },
+            data: totals,
         });
 
-        // Broadcast
         this.gateway.broadcastReferendumUpdated({
             referendumId: dto.referendumId,
             approveCount: totals.approveCount,
             disapproveCount: totals.disapproveCount,
             abstainCount: totals.abstainCount,
-            countingProgress: avgProgress,
+            countingProgress: totals.countingProgress,
         });
 
-        await this.redis.invalidatePattern('summary:*');
+        // Scoped cache invalidation — we need the electionId to scope properly
+        try {
+            const referendum = await this.prisma.referendum.findUnique({
+                where: { id: dto.referendumId },
+                select: { electionId: true },
+            });
+            if (referendum) {
+                await this.redis.invalidatePattern(`summary:*:${referendum.electionId}`);
+            }
+        } catch (err) {
+            this.logger.warn(`Failed to invalidate cache after referendum update: ${err}`);
+        }
+
+        this.logger.log(`Updated referendum #${dto.referendumId} results for province #${dto.provinceId}`);
         return result;
     }
 
     async toggle(id: number, dto: ToggleReferendumDto) {
-        await this.findById(id);
+        const referendum = await this.findById(id);
         const updated = await this.prisma.referendum.update({
             where: { id },
             data: { isEnabled: dto.isEnabled },
@@ -148,7 +168,7 @@ export class ReferendumService {
             isEnabled: dto.isEnabled,
         });
 
-        await this.redis.invalidatePattern('summary:*');
+        await this.redis.invalidatePattern(`summary:*:${referendum.electionId}`);
         this.logger.log(`Referendum #${id} toggled to ${dto.isEnabled}`);
         return updated;
     }

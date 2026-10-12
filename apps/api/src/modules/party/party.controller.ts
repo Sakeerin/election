@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PartyService } from './party.service';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
@@ -13,9 +13,17 @@ export class PartyController {
     constructor(private readonly partyService: PartyService) { }
 
     @Get()
-    @ApiOperation({ summary: 'Get all parties' })
-    findAll() {
-        return this.partyService.findAll();
+    @ApiOperation({ summary: 'Get paginated list of parties' })
+    @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
+    findAll(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.partyService.findAll({
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 50,
+        });
     }
 
     @Get(':id')
@@ -26,8 +34,12 @@ export class PartyController {
 
     @Get(':id/detail')
     @ApiOperation({ summary: 'Get full party details with seats and wins' })
-    getPartyDetail(@Param('id', ParseIntPipe) id: number) {
-        return this.partyService.getPartyDetail(id);
+    @ApiQuery({ name: 'electionId', required: false, type: Number })
+    getPartyDetail(
+        @Param('id', ParseIntPipe) id: number,
+        @Query('electionId') electionId?: string,
+    ) {
+        return this.partyService.getPartyDetail(id, electionId ? parseInt(electionId, 10) : undefined);
     }
 
     @Post()

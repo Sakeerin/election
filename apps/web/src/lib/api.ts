@@ -22,6 +22,8 @@ export async function apiClient<T>(
             'Content-Type': 'application/json',
             ...headers,
         },
+        // Send cookies (httpOnly access_token) on every cross-origin request
+        credentials: 'include',
         cache,
         next,
     };

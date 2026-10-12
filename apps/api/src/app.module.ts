@@ -12,6 +12,7 @@ import { VoteModule } from './modules/vote/vote.module';
 import { ReferendumModule } from './modules/referendum/referendum.module';
 import { SectionModule } from './modules/section/section.module';
 import { SummaryModule } from './modules/summary/summary.module';
+import { HealthModule } from './modules/health/health.module';
 import { ElectionGateway } from './gateways/election.gateway';
 
 @Module({
@@ -42,6 +43,7 @@ import { ElectionGateway } from './gateways/election.gateway';
         ReferendumModule,
         SectionModule,
         SummaryModule,
+        HealthModule,
     ],
     providers: [ElectionGateway],
 })

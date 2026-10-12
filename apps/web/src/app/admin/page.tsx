@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 export default function AdminLoginPage() {
     const router = useRouter();
     const [username, setUsername] = useState('');
@@ -16,26 +18,28 @@ export default function AdminLoginPage() {
         setError('');
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/login`, {
+            const response = await fetch(`${API_BASE}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // credentials: 'include' is required so the browser stores the httpOnly cookie
+                credentials: 'include',
                 body: JSON.stringify({ username, password }),
             });
 
             if (!response.ok) {
-                const data = await response.json();
+                const data = await response.json().catch(() => ({}));
                 throw new Error(data.message || 'Login failed');
             }
 
-            const data = await response.json();
-            
-            // Store token in localStorage (for simplicity in this prototype)
-            localStorage.setItem('admin_token', data.accessToken);
-            localStorage.setItem('admin_user', JSON.stringify(data.user));
+            // The access_token is now in an httpOnly cookie — we never touch it in JS.
+            // Store only the non-sensitive user profile in sessionStorage.
+            const { user } = await response.json();
+            sessionStorage.setItem('admin_user', JSON.stringify(user));
 
             router.push('/admin/dashboard');
-        } catch (err: any) {
-            setError(err.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+            setError(message);
         } finally {
             setIsLoading(false);
         }

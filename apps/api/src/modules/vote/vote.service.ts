@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { ElectionGateway } from '../../gateways/election.gateway';
-import { UpdateConstituencyVotesDto, UpdatePartyListDto } from './dto/update-votes.dto';
+import { UpdateConstituencyVotesDto, UpdatePartyListDto, BatchUpdateConstituencyVotesDto } from './dto/update-votes.dto';
 import { ConstituencyStatus } from '@prisma/client';
 
 @Injectable()
@@ -16,35 +16,42 @@ export class VoteService {
     ) { }
 
     async updateConstituencyVotes(dto: UpdateConstituencyVotesDto) {
+        this.logger.debug(`Updating votes for constituency #${dto.constituencyId}`);
+
         const constituency = await this.prisma.constituency.findUnique({
             where: { id: dto.constituencyId },
-            include: { candidates: true },
+            select: { id: true, electionId: true, candidates: { select: { id: true, partyId: true } } },
         });
 
         if (!constituency) {
-            throw new Error(`Constituency #${dto.constituencyId} not found`);
+            throw new BadRequestException(`Constituency #${dto.constituencyId} not found`);
         }
 
-        // Update each candidate's vote count in a transaction
+        const { electionId } = constituency;
+
+        // All DB work in one transaction; broadcast only AFTER successful commit
         const results = await this.prisma.$transaction(async (tx) => {
-            // Upsert vote results for each candidate
-            const updatedResults = [];
+            this.logger.debug(`Upserting ${dto.votes.length} vote results in constituency #${dto.constituencyId}`);
+
+            // Reset all results to not-leading / not-winner before re-ranking
+            await tx.constituencyResult.updateMany({
+                where: { constituencyId: dto.constituencyId },
+                data: { isLeading: false, isWinner: false },
+            });
+
+            // Upsert vote count for each candidate submitted
             for (const vote of dto.votes) {
-                const candidate = constituency.candidates.find(c => c.id === vote.candidateId);
+                const candidate = constituency.candidates.find((c) => c.id === vote.candidateId);
                 if (!candidate) continue;
 
-                const result = await tx.constituencyResult.upsert({
+                await tx.constituencyResult.upsert({
                     where: {
                         constituencyId_candidateId: {
                             constituencyId: dto.constituencyId,
                             candidateId: vote.candidateId,
                         },
                     },
-                    update: {
-                        voteCount: vote.voteCount,
-                        isLeading: false,
-                        isWinner: false,
-                    },
+                    update: { voteCount: vote.voteCount },
                     create: {
                         constituencyId: dto.constituencyId,
                         candidateId: vote.candidateId,
@@ -52,26 +59,23 @@ export class VoteService {
                         voteCount: vote.voteCount,
                     },
                 });
-                updatedResults.push(result);
             }
 
-            // Recompute isLeading and isWinner
-            if (updatedResults.length > 0) {
-                const allResults = await tx.constituencyResult.findMany({
-                    where: { constituencyId: dto.constituencyId },
-                    orderBy: { voteCount: 'desc' },
-                });
+            // Find the single leader (highest voteCount) and mark accordingly
+            const leader = await tx.constituencyResult.findFirst({
+                where: { constituencyId: dto.constituencyId },
+                orderBy: { voteCount: 'desc' },
+                select: { id: true },
+            });
 
-                if (allResults.length > 0) {
-                    // Mark the leader
-                    await tx.constituencyResult.update({
-                        where: { id: allResults[0].id },
-                        data: {
-                            isLeading: true,
-                            isWinner: dto.countingProgress === 100,
-                        },
-                    });
-                }
+            if (leader) {
+                await tx.constituencyResult.update({
+                    where: { id: leader.id },
+                    data: {
+                        isLeading: true,
+                        isWinner: dto.countingProgress === 100,
+                    },
+                });
             }
 
             // Update constituency stats
@@ -84,11 +88,13 @@ export class VoteService {
                     ...(dto.noVoteBallots !== undefined && { noVoteBallots: dto.noVoteBallots }),
                     ...(dto.countingProgress !== undefined && { countingProgress: dto.countingProgress }),
                     ...(dto.countingProgress === 100 && { status: ConstituencyStatus.COMPLETED }),
-                    ...(dto.countingProgress !== undefined && dto.countingProgress > 0 && dto.countingProgress < 100 && { status: ConstituencyStatus.COUNTING }),
+                    ...(dto.countingProgress !== undefined &&
+                        dto.countingProgress > 0 &&
+                        dto.countingProgress < 100 && { status: ConstituencyStatus.COUNTING }),
                 },
             });
 
-            // Return final results
+            // Fetch final state to return and broadcast
             return tx.constituencyResult.findMany({
                 where: { constituencyId: dto.constituencyId },
                 include: { candidate: true, party: true },
@@ -96,10 +102,10 @@ export class VoteService {
             });
         });
 
-        // Broadcast via WebSocket
+        // Broadcast AFTER successful commit — data is now persisted
         this.gateway.broadcastVoteUpdated({
             constituencyId: dto.constituencyId,
-            results: results.map(r => ({
+            results: results.map((r) => ({
                 id: r.id,
                 constituencyId: r.constituencyId,
                 candidateId: r.candidateId,
@@ -111,15 +117,16 @@ export class VoteService {
             })),
         });
 
-        // Invalidate cached summaries
-        await this.redis.invalidatePattern('summary:*');
+        // Scoped cache invalidation — only clear summaries for this election
+        await this.redis.invalidatePattern(`summary:*:${electionId}`);
 
-        this.logger.log(`Updated votes for constituency #${dto.constituencyId}`);
+        this.logger.log(`Updated votes for constituency #${dto.constituencyId} (election #${electionId})`);
         return results;
     }
 
     async updatePartyListAllocation(dto: UpdatePartyListDto) {
-        // Get constituency seats count for this party
+        this.logger.debug(`Updating party list allocation for party #${dto.partyId}, election #${dto.electionId}`);
+
         const constituencySeats = await this.prisma.constituencyResult.count({
             where: {
                 partyId: dto.partyId,
@@ -151,7 +158,6 @@ export class VoteService {
             },
         });
 
-        // Broadcast party update
         this.gateway.broadcastPartyUpdated({
             partyId: dto.partyId,
             totalSeats: allocation.totalSeats,
@@ -159,10 +165,34 @@ export class VoteService {
             partyListSeats: allocation.allocatedSeats,
         });
 
-        // Invalidate cached summaries
-        await this.redis.invalidatePattern('summary:*');
+        // Scoped cache invalidation
+        await this.redis.invalidatePattern(`summary:*:${dto.electionId}`);
 
-        this.logger.log(`Updated party list allocation for party #${dto.partyId}`);
+        this.logger.log(`Updated party list allocation for party #${dto.partyId}, election #${dto.electionId}`);
         return allocation;
+    }
+
+    /**
+     * Atomically update votes for multiple constituencies in a single request.
+     * Useful for bulk imports where updating one at a time would be too slow.
+     */
+    async batchUpdateConstituencyVotes(dto: BatchUpdateConstituencyVotesDto) {
+        this.logger.log(`Batch updating ${dto.updates.length} constituencies`);
+
+        const results = await Promise.allSettled(
+            dto.updates.map((update) => this.updateConstituencyVotes(update)),
+        );
+
+        const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+        const failed = results
+            .map((r, i) => ({ index: i, result: r }))
+            .filter((r) => r.result.status === 'rejected')
+            .map(({ index, result }) => ({
+                constituencyId: dto.updates[index].constituencyId,
+                error: (result as PromiseRejectedResult).reason?.message ?? 'Unknown error',
+            }));
+
+        this.logger.log(`Batch update complete: ${succeeded} succeeded, ${failed.length} failed`);
+        return { succeeded, failed };
     }
 }

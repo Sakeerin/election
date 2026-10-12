@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { ElectionService } from './election.service';
 import { CreateElectionDto } from './dto/create-election.dto';
 import { UpdateElectionDto, UpdateElectionStatusDto } from './dto/update-election.dto';
@@ -13,9 +13,17 @@ export class ElectionController {
     constructor(private readonly electionService: ElectionService) { }
 
     @Get()
-    @ApiOperation({ summary: 'Get all elections' })
-    findAll() {
-        return this.electionService.findAll();
+    @ApiOperation({ summary: 'Get paginated list of elections' })
+    @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+    findAll(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
+        return this.electionService.findAll({
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 20,
+        });
     }
 
     @Get('active')

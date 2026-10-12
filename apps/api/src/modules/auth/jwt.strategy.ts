@@ -1,13 +1,22 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Request } from 'express';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
-interface JwtPayload {
+export interface JwtPayload {
     sub: number;
     username: string;
     role: string;
+}
+
+/** Extract JWT from httpOnly cookie or fallback to Authorization Bearer header */
+function cookieOrBearerExtractor(req: Request): string | null {
+    if (req?.cookies?.access_token) {
+        return req.cookies.access_token as string;
+    }
+    return ExtractJwt.fromAuthHeaderAsBearerToken()(req);
 }
 
 @Injectable()
@@ -16,10 +25,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         private readonly configService: ConfigService,
         private readonly prisma: PrismaService,
     ) {
+        const jwtSecret = configService.get<string>('JWT_SECRET');
+        if (!jwtSecret) {
+            throw new InternalServerErrorException(
+                'JWT_SECRET environment variable is not set. Refusing to start with an insecure default.',
+            );
+        }
         super({
-            jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+            jwtFromRequest: cookieOrBearerExtractor,
             ignoreExpiration: false,
-            secretOrKey: configService.get<string>('JWT_SECRET', 'change-me'),
+            secretOrKey: jwtSecret,
+            passReqToCallback: false,
         });
     }
 

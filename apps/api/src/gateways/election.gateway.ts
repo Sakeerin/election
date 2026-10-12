@@ -7,6 +7,7 @@ import {
     OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { WS_EVENTS } from '@election/shared/src/constants';
 import type {
@@ -20,7 +21,11 @@ import type {
 
 @WebSocketGateway({
     cors: {
-        origin: '*',
+        // Restrict origins to the configured allowlist (never wildcard in production)
+        origin: (process.env.CORS_ORIGINS ?? 'http://localhost:3000')
+            .split(',')
+            .map((o) => o.trim()),
+        credentials: true,
     },
     namespace: '/',
 })
@@ -30,6 +35,9 @@ export class ElectionGateway
     server: Server;
 
     private logger = new Logger('ElectionGateway');
+
+    // Injecting ConfigService requires the gateway to be a proper NestJS provider
+    constructor(private readonly configService: ConfigService) { }
 
     afterInit() {
         this.logger.log('WebSocket Gateway initialized');
@@ -45,19 +53,30 @@ export class ElectionGateway
 
     @SubscribeMessage(WS_EVENTS.SUBSCRIBE_CONSTITUENCY)
     handleSubscribeConstituency(client: Socket, payload: { constituencyId: number }) {
-        const room = `constituency:${payload.constituencyId}`;
+        const id = Number(payload?.constituencyId);
+        if (!Number.isInteger(id) || id <= 0) {
+            client.emit('error', { message: 'Invalid constituencyId' });
+            return;
+        }
+        const room = `constituency:${id}`;
         client.join(room);
         this.logger.log(`Client ${client.id} joined room ${room}`);
     }
 
     @SubscribeMessage(WS_EVENTS.SUBSCRIBE_PROVINCE)
     handleSubscribeProvince(client: Socket, payload: { provinceId: number }) {
-        const room = `province:${payload.provinceId}`;
+        const id = Number(payload?.provinceId);
+        if (!Number.isInteger(id) || id <= 0) {
+            client.emit('error', { message: 'Invalid provinceId' });
+            return;
+        }
+        const room = `province:${id}`;
         client.join(room);
         this.logger.log(`Client ${client.id} joined room ${room}`);
     }
 
-    // Broadcast methods called from services
+    // ── Broadcast helpers (called from services after successful DB commit) ──
+
     broadcastVoteUpdated(data: WsVoteUpdated) {
         this.server.emit(WS_EVENTS.VOTE_UPDATED, data);
         this.server
