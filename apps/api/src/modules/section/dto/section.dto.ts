@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsBoolean, IsInt, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt, IsArray, IsEnum, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SectionType } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateSectionDto {
@@ -13,10 +14,10 @@ export class UpdateSectionDto {
     @IsString()
     titleEn?: string;
 
-    @ApiPropertyOptional()
+    @ApiPropertyOptional({ enum: SectionType })
     @IsOptional()
-    @IsString()
-    sectionType?: string;
+    @IsEnum(SectionType)
+    sectionType?: SectionType;
 
     @ApiPropertyOptional()
     @IsOptional()
