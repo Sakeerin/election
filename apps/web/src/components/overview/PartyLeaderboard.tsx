@@ -45,7 +45,7 @@ export default function PartyLeaderboard({ parties }: PartyLeaderboardProps) {
     }, [parties, query, sortKey, sortDir]);
 
     return (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <section id="party-leaderboard" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 scroll-mt-20">
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-5 border-b border-slate-700/50 flex flex-col sm:flex-row sm:items-center gap-4">

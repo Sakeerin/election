@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { IOverviewSummary } from '@election/shared';
+import { useState, useCallback, ReactNode } from 'react';
+import { IElectionSection, IOverviewSummary } from '@election/shared';
 import { useElectionSocket } from '@/hooks/useElectionSocket';
 import { useElectionData } from '@/hooks/useElectionData';
 import HeroSection from './HeroSection';
@@ -12,6 +12,7 @@ import CountingProgress from './CountingProgress';
 import { MOCK_TICKER_ITEMS } from '@/lib/mockData';
 import LiveTicker from './LiveTicker';
 import MapSectionPreview from './MapSectionPreview';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface DynamicSectionRendererProps {
     initialData: IOverviewSummary;
@@ -47,63 +48,76 @@ export default function DynamicSectionRenderer({ initialData }: DynamicSectionRe
 
     return (
         <>
-            {/* Live Ticker always on top */}
-            {isEnabled('live_ticker') && <LiveTicker items={MOCK_TICKER_ITEMS} />}
+            {/* Live Ticker always on top; if it crashes, just hide it */}
+            {isEnabled('live_ticker') && (
+                <ErrorBoundary fallback={null}>
+                    <LiveTicker items={MOCK_TICKER_ITEMS} />
+                </ErrorBoundary>
+            )}
 
             {sorted.map((section) => {
                 if (!section.isEnabled) return null;
 
-                switch (section.sectionKey) {
-                    case 'hero_banner':
-                        return <HeroSection key={section.sectionKey} data={mergedData} />;
+                const content = renderSection(section, mergedData);
+                if (!content) return null;
 
-                    case 'top_parties':
-                        return <TopPartiesCard key={section.sectionKey} parties={mergedData.parties} />;
-
-                    case 'referendum':
-                        if (!mergedData.election.hasReferendum || !mergedData.referendum?.length) {
-                            return null;
-                        }
-                        return (
-                            <ReferendumWidget
-                                key={section.sectionKey}
-                                referendums={mergedData.referendum}
-                            />
-                        );
-
-                    case 'party_leaderboard':
-                        return (
-                            <PartyLeaderboard
-                                key={section.sectionKey}
-                                parties={mergedData.parties}
-                            />
-                        );
-
-                    case 'counting_progress':
-                        return <CountingProgress key={section.sectionKey} data={mergedData} />;
-
-                    // These sections are placeholders for future phases
-                    case 'map_view':
-                        return <MapSectionPreview key={section.sectionKey} data={mergedData} />;
-
-                    case 'coalition_simulator':
-                        return (
+                // Isolate each section so one crashing component doesn't blank the whole page
+                return (
+                    <ErrorBoundary
+                        key={section.sectionKey}
+                        fallback={
                             <PlaceholderSection
-                                key={section.sectionKey}
                                 title={section.titleTh}
-                                subtitle="จำลองจัดตั้งรัฐบาลจะพร้อมใช้งานใน Phase 7"
+                                subtitle="ส่วนนี้แสดงผลไม่ได้ชั่วคราว กรุณารีเฟรชหน้า"
                             />
-                        );
-
-                    case 'live_ticker':
-                        return null; // rendered above
-
-                    default:
-                        return null;
-                }
+                        }
+                    >
+                        {content}
+                    </ErrorBoundary>
+                );
             })}
         </>
     );
+}
+
+function renderSection(section: IElectionSection, data: IOverviewSummary): ReactNode {
+    switch (section.sectionKey) {
+        case 'hero_banner':
+            return <HeroSection data={data} />;
+
+        case 'top_parties':
+            return <TopPartiesCard parties={data.parties} />;
+
+        case 'referendum':
+            if (!data.election.hasReferendum || !data.referendum?.length) {
+                return null;
+            }
+            return <ReferendumWidget referendums={data.referendum} />;
+
+        case 'party_leaderboard':
+            return <PartyLeaderboard parties={data.parties} />;
+
+        case 'counting_progress':
+            return <CountingProgress data={data} />;
+
+        // These sections are placeholders for future phases
+        case 'map_view':
+            return <MapSectionPreview data={data} />;
+
+        case 'coalition_simulator':
+            return (
+                <PlaceholderSection
+                    title={section.titleTh}
+                    subtitle="จำลองจัดตั้งรัฐบาลจะพร้อมใช้งานใน Phase 7"
+                />
+            );
+
+        case 'live_ticker':
+            return null; // rendered above
+
+        default:
+            return null;
+    }
 }
 
 function PlaceholderSection({ title, subtitle }: { title: string; subtitle: string }) {

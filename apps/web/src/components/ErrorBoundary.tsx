@@ -36,7 +36,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
     render() {
         if (this.state.hasError) {
-            if (this.props.fallback) return this.props.fallback;
+            // `fallback={null}` is valid and means "render nothing"
+            if (this.props.fallback !== undefined) return this.props.fallback;
 
             return (
                 <div className="flex min-h-[300px] flex-col items-center justify-center rounded-3xl border border-red-500/30 bg-red-500/5 p-8 text-center">

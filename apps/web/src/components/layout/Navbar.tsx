@@ -26,9 +26,10 @@ export default function Navbar({
     const navLinks = [
         { href: '/', label: 'ภาพรวม' },
         { href: '/map', label: 'แผนที่' },
-        { href: '/party', label: 'พรรคการเมือง' },
+        // No index pages for these yet; jump to the matching homepage section
+        { href: '/#party-leaderboard', label: 'พรรคการเมือง' },
         { href: '/coalition', label: 'จัดตั้งรัฐบาล' },
-        { href: '/referendum', label: 'ประชามติ' },
+        { href: '/#referendum', label: 'ประชามติ' },
     ];
 
     useEffect(() => {

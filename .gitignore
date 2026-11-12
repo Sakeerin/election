@@ -29,3 +29,6 @@ yarn-debug.log*
 
 # Testing
 coverage/
+
+# TypeScript incremental build state
+*.tsbuildinfo

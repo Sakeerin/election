@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -17,10 +17,31 @@ interface AdminLayoutProps {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
+// sessionStorage never notifies about same-tab writes, so there is nothing to subscribe to
+const subscribeNoop = () => () => { };
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const [user, setUser] = useState<AdminUser | null>(null);
+    const [verifiedUser, setVerifiedUser] = useState<AdminUser | null>(null);
+
+    // Fast path: show the sessionStorage cache while verifying in background.
+    // The server snapshot is null so hydration matches the prerendered HTML.
+    const cachedJson = useSyncExternalStore(
+        subscribeNoop,
+        () => sessionStorage.getItem('admin_user'),
+        () => null,
+    );
+    const cachedUser = useMemo(() => {
+        if (!cachedJson) return null;
+        try {
+            return JSON.parse(cachedJson) as AdminUser;
+        } catch {
+            return null; // Ignore parse errors — verifyAuth will handle redirect
+        }
+    }, [cachedJson]);
+
+    const user = verifiedUser ?? cachedUser;
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     useEffect(() => {
@@ -37,21 +58,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 const profile: AdminUser = await res.json();
                 // Update sessionStorage cache for display purposes only (not auth)
                 sessionStorage.setItem('admin_user', JSON.stringify(profile));
-                setUser(profile);
+                setVerifiedUser(profile);
             } catch {
                 router.push('/admin');
             }
         };
-
-        // Fast path: use sessionStorage cache while verifying in background
-        const cached = sessionStorage.getItem('admin_user');
-        if (cached) {
-            try {
-                setUser(JSON.parse(cached) as AdminUser);
-            } catch {
-                // Ignore parse errors — verifyAuth will handle redirect
-            }
-        }
 
         verifyAuth();
     }, [router]);

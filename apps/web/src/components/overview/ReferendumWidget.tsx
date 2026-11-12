@@ -14,7 +14,7 @@ export default function ReferendumWidget({ referendums }: ReferendumWidgetProps)
     if (enabled.length === 0) return null;
 
     return (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <section id="referendum" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 scroll-mt-20">
             <h2 className="text-xl font-bold text-white mb-6">ผลประชามติ</h2>
             <div className="grid grid-cols-1 gap-6">
                 {enabled.map((ref) => (
